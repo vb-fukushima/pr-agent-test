@@ -1,14 +1,20 @@
-[config]
-response_language = "ja-JP"
-
 [pr_reviewer]
 extra_instructions = """
-For each review comment, write in TWO languages:
-🇯🇵 [Japanese text here]
-🇻🇳 [Vietnamese text here]
+IMPORTANT: For every single review comment, you MUST write in both languages below.
+Do not skip either language. Use exactly this format:
+
+🇯🇵 （日本語でのレビューコメント）
+🇻🇳 （Nhận xét bằng tiếng Việt）
 """
 
 [pr_description]
 extra_instructions = """
-Write the PR description in Japanese.
+Write the PR description in both Japanese and Vietnamese.
+Use this format:
+🇯🇵 （日本語）
+🇻🇳 （Tiếng Việt）
 """
+
+
+
+
