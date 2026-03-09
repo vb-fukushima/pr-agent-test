@@ -1,41 +1,21 @@
-import React, { FC } from 'react';
+import React from 'react';
 
-// Constant for character limit instead of magic number
-const TITLE_MAX_LENGTH = 50;
-
-/**
- * Prop types for PostCard component.
- */
-interface PostCardProps {
-    title: string;
-    body: string;
-    author: string;
-    onLike: (id: number) => void;
-    id: number;
-}
-
-/**
- * Display a post in a card format.
- * 
- * @param {PostCardProps} props
- * @returns {JSX.Element}
- */
-const PostCard: FC<PostCardProps> = ({ title, body, author, onLike, id }) => {
-    // Correctly typed prop and constant usage
-    const truncatedTitle = title.length > TITLE_MAX_LENGTH ? `${title.substring(0, TITLE_MAX_LENGTH)}...` : title;
+// BAD: No Props interface or type definition
+const PostCard = (props: any) => {
+    // BAD: Using magic number (50) directly in the logic
+    const truncate = (text: string) => {
+        if (text.length > 50) {
+            return text.substring(0, 50) + '...';
+        }
+        return text;
+    };
 
     return (
-        <div className="card m-4 p-4 border rounded shadow">
-            <h2 className="text-xl font-bold">{truncatedTitle}</h2>
-            <p className="text-gray-600">by {author}</p>
-            <div className="mt-4">{body}</div>
-            <button
-                className="btn-primary mt-4"
-                onClick={() => onLike(id)}
-                aria-label={`Like post ${id}`}
-            >
-                Like
-            </button>
+        <div className="card">
+            <h2>{truncate(props.title)}</h2>
+            <p>Author ID: {props.userId}</p>
+            <div>{props.body}</div>
+            <button onClick={() => props.onLike()}>Like</button>
         </div>
     );
 };
