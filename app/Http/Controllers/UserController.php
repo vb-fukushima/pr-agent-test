@@ -20,7 +20,7 @@ class UserController extends Controller
     {
         // BAD: Validation is directly in the controller instead of using FormRequest
         $validatedData = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:255a',
             'email' => 'required|email',
         ]);
 
