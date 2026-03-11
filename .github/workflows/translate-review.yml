@@ -1,0 +1,74 @@
+name: Translate PR Agent Comments
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  translate:
+    # PR Agentのコメントのみ対象
+    if: github.event.comment.user.login == 'qodo-code-review[bot]'
+        || contains(github.event.comment.body, '<!-- pr-agent')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Translate and comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = context.payload.comment.body;
+
+            // Gemini API で翻訳（RPM制限対策のリトライ付き）
+            const prompt = `以下のPRレビューコメントを日本語に翻訳してください。\nルール：\n- コードブロック（\`\`\`で囲まれた部分）は翻訳せず、そのままコピーしてください\n- インラインコード（\`で囲まれた部分）も翻訳しないでください\n- マークダウンの構造・記号はそのまま保持してください\n- 自然言語の文章部分のみ日本語に翻訳してください\n\n${body}`;
+
+            async function translateWithRetry(text, retries = 3) {
+              for (let i = 0; i < retries; i++) {
+                const res = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}`,
+                  {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      contents: [{ parts: [{ text }] }]
+                    })
+                  }
+                );
+                if (res.status === 429) {
+                  // RPM制限に引っかかったら待機してリトライ
+                  console.log(`Rate limited. Retrying in ${(i + 1) * 10}s...`);
+                  await new Promise(r => setTimeout(r, (i + 1) * 10000));
+                  continue;
+                }
+                const json = await res.json();
+                return json.candidates[0].content.parts[0].text;
+              }
+              throw new Error('Translation failed after retries');
+            }
+
+            const translated = await translateWithRetry(prompt);
+
+            // 元コメントへの返信として翻訳を追加（折りたたみ形式）
+            const commentBody = `<details>\n<summary>🇯🇵 日本語訳</summary>\n\n${translated}\n\n</details>`;
+            const commentId = context.payload.comment.id;
+
+            if (context.eventName === 'pull_request_review_comment') {
+              // レビューコメントへの返信（in_reply_to で紐付け）
+              await github.rest.pulls.createReplyForReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                comment_id: commentId,
+                body: commentBody
+              });
+            } else {
+              // issueコメントへの返信（in_reply_to パラメータで紐付け）
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody,
+                in_reply_to: commentId
+              });
+            }
