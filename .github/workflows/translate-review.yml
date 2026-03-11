@@ -9,7 +9,6 @@ on:
 jobs:
   translate:
     if: github.event.comment.user.login == 'qodo-code-review[bot]'
-        || contains(github.event.comment.body, '<!-- pr-agent')
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -21,6 +20,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const body = context.payload.comment.body;
+
+            // Qodoの暫定コメント（レビュー分析中メッセージ）はスキップ
+            if (
+              body.includes('AI review agent is analyzing') ||
+              body.includes('AIレビューエージェントがこのプルリクエストを分析しています')
+            ) {
+              console.log('Skipping interim Qodo comment.');
+              return;
+            }
 
             // Gemini API で翻訳（RPM制限対策のリトライ付き）
             const prompt = `以下のPRレビューコメントを日本語に翻訳してください。\nルール：\n- コードブロック（\`\`\`で囲まれた部分）は翻訳せず、そのままコピーしてください\n- インラインコード（\`で囲まれた部分）も翻訳しないでください\n- マークダウンの構造・記号はそのまま保持してください\n- 自然言語の文章部分のみ日本語に翻訳してください\n\n${body}`;
@@ -38,7 +46,6 @@ jobs:
                   }
                 );
                 if (res.status === 429) {
-                  // RPM制限に引っかかったら待機してリトライ
                   console.log(`Rate limited. Retrying in ${(i + 1) * 10}s...`);
                   await new Promise(r => setTimeout(r, (i + 1) * 10000));
                   continue;
@@ -51,12 +58,12 @@ jobs:
 
             const translated = await translateWithRetry(prompt);
 
-            // 元コメントへの返信として翻訳を追加（折りたたみ形式）
+            // 翻訳コメントを組み立て（折りたたみ形式）
             const commentBody = `<details>\n<summary>🇯🇵 日本語訳</summary>\n\n${translated}\n\n</details>`;
             const commentId = context.payload.comment.id;
 
             if (context.eventName === 'pull_request_review_comment') {
-              // レビューコメントへの返信（in_reply_to で紐付け）
+              // インラインコメントへの返信
               await github.rest.pulls.createReplyForReviewComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -65,12 +72,12 @@ jobs:
                 body: commentBody
               });
             } else {
-              // issueコメントへの返信（in_reply_to パラメータで紐付け）
+              // 通常コメント（in_reply_to はAPI非対応のため、引用付きで投稿）
+              const quoteHeader = `> 🤖 qodo-code-review[bot] のコメントの翻訳\n\n`;
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: commentBody,
-                in_reply_to: commentId
+                body: quoteHeader + commentBody
               });
             }
