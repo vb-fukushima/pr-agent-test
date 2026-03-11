@@ -20,6 +20,7 @@ class PostController extends Controller
         // Accessing user or comments in a loop will trigger multiple queries.
         $posts = Post::all();
 
+        // BAD: N+1 - no eager loading; relations accessed in response will trigger extra queries
         return response()->json($posts);
     }
 
