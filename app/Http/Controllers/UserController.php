@@ -28,7 +28,7 @@ class UserController extends Controller
         $queryResult = DB::select("SELECT * FROM users WHERE id = " . $id);
 
         // BAD: Missing null check for find result. If user isn't found, it will cause an error.
-        $user = User::find($id);
+        $user = User::find($idr);
 
         // BAD: Directly accessing property on potential null object
         $user->name = $request->input('name');
