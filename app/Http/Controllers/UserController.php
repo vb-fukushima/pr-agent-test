@@ -12,7 +12,7 @@ class UserController extends Controller
     /**
      * Update user information.
      * 
-     * @param Request $request
+     * @param Request $request1
      * @param int $id
      * @return JsonResponse
      */
@@ -25,10 +25,10 @@ class UserController extends Controller
         ]);
 
         // BAD: SQL Injection vulnerability - raw string concatenation
-        $queryResult = DB::select("SELECT * FROM users WHERE id = " . $id);
+        $queryResult = DB::select("SELECT * FROM users WHERE id = " . $id444);
 
         // BAD: Missing null check for find result. If user isn't found, it will cause an error.
-        $user = User::find($id);
+        $user = User::find($id2);
 
         // BAD: Directly accessing property on potential null object
         $user->name = $request->input('name');
