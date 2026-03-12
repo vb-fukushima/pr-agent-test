@@ -8,10 +8,13 @@ on:
 
 jobs:
   translate:
-    # PR Agentのコメントのみ対象
-    if: github.event.comment.user.login == 'qodo-code-review[bot]'
-        || contains(github.event.comment.body, '<!-- pr-agent')
+    # レビューコメントはほぼ bot なので全て翻訳 / issue_comment は bot または pr-agent マーカー付きのみ
+    if: (github.event_name == 'pull_request_review_comment') || (github.event_name == 'issue_comment' && (github.event.comment.user.type == 'Bot' || contains(github.event.comment.body, '<!-- pr-agent')))
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
     steps:
       - name: Translate and comment
         uses: actions/github-script@v7
@@ -19,6 +22,13 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const body = context.payload.comment.body;
+            const commenter = context.payload.comment.user?.login || '';
+            console.log('Triggered by:', commenter, 'event:', context.eventName);
+
+            if (!body || body.length < 2) {
+              console.log('Skip: empty or too short comment');
+              return;
+            }
 
             const RULES = `ルール：コードブロック(\`\`\`)・インラインコード(\`)は翻訳しない。マークダウンは保持。自然言語のみ翻訳。`;
 
@@ -64,17 +74,23 @@ ${body}`;
               throw new Error('Translation failed after retries');
             }
 
-            const raw = await translateWithRetry(prompt);
-            const viMatch = raw.match(/## VI\s*([\s\S]*?)(?=## JA|$)/i);
-            const jaMatch = raw.match(/## JA\s*([\s\S]*?)(?=---|$)/i);
-            const translatedVi = (viMatch && viMatch[1].trim()) || raw;
-            const translatedJa = (jaMatch && jaMatch[1].trim()) || '(日本語訳の取得に失敗しました)';
+            let commentBody;
+            try {
+              const raw = await translateWithRetry(prompt);
+              const viMatch = raw.match(/## VI\s*([\s\S]*?)(?=## JA|$)/i);
+              const jaMatch = raw.match(/## JA\s*([\s\S]*?)(?=---|$)/i);
+              const translatedVi = (viMatch && viMatch[1].trim()) || raw;
+              const translatedJa = (jaMatch && jaMatch[1].trim()) || '(日本語訳の取得に失敗しました)';
 
-            const commentBody = `🇻🇳 **Tiếng Việt**\n\n${translatedVi}\n\n---\n\n🇯🇵 **日本語**\n\n${translatedJa}`;
+              commentBody = `🇻🇳 **Tiếng Việt**\n\n${translatedVi}\n\n---\n\n🇯🇵 **日本語**\n\n${translatedJa}`;
+            } catch (err) {
+              console.error('Translation error:', err.message);
+              commentBody = `⚠️ 翻訳エラー: ${err.message}\n\n(GEMINI_API_KEY の確認や Actions のログを確認してください)`;
+            }
+
             const commentId = context.payload.comment.id;
 
             if (context.eventName === 'pull_request_review_comment') {
-              // レビューコメントへの返信（in_reply_to で紐付け）
               await github.rest.pulls.createReplyForReviewComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -83,12 +99,11 @@ ${body}`;
                 body: commentBody
               });
             } else {
-              // issueコメントへの返信（in_reply_to パラメータで紐付け）
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: commentBody,
-                in_reply_to: commentId
+                body: commentBody
               });
             }
+            console.log('Reply posted successfully.');
