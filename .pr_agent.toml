@@ -1,4 +1,5 @@
-[config] response_language = "vi-VN"
+[config]
+response_language = "vi-VN"
 
 [pr_reviewer]
 extra_instructions = """
