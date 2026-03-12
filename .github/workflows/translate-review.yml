@@ -8,63 +8,37 @@ on:
 
 jobs:
   translate:
-    # レビューコメントはほぼ bot なので全て翻訳 / issue_comment は bot または pr-agent マーカー付きのみ
-    if: (github.event_name == 'pull_request_review_comment') || (github.event_name == 'issue_comment' && (github.event.comment.user.type == 'Bot' || contains(github.event.comment.body, '<!-- pr-agent')))
+    if: github.event.comment.user.login == 'qodo-code-review[bot]' || contains(github.event.comment.body, '<!-- pr-agent')
     runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: write
-      contents: read
     steps:
       - name: Translate and comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v6
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const body = context.payload.comment.body;
-            const commenter = context.payload.comment.user?.login || '';
-            console.log('Triggered by:', commenter, 'event:', context.eventName);
+            if (!body || body.length < 2) return;
 
-            if (!body || body.length < 2) {
-              console.log('Skip: empty or too short comment');
-              return;
-            }
+            const prompt = `以下のPRレビューコメントを日本語に翻訳してください。
+            ルール：コードブロック（\`\`\`で囲んだ部分）とインラインコード（\`で囲んだ部分）は翻訳せずそのまま。マークダウンは保持。自然な文章部分のみ日本語に。\n\n${body}`;
 
-            const RULES = `ルール：コードブロック(\`\`\`)・インラインコード(\`)は翻訳しない。マークダウンは保持。自然言語のみ翻訳。`;
-
-            // 1回のAPI呼び出しでベトナム語＋日本語を取得（RPM削減）
-            const prompt = `以下のPRレビューコメントを、指定フォーマットで2つ翻訳してください。
-
-${RULES}
-
-出力は必ず次の2ブロックだけにしてください（見出しも含めてそのまま）：
----
-## VI
-（ここにベトナム語訳を1つで出力）
-## JA
-（ここに日本語訳を1つで出力）
----
-
-対象テキスト：
-${body}`;
-
-            async function translateWithRetry(text, retries = 6) {
-              const backoffSec = [15, 30, 45, 60, 75, 90];
+            async function translateWithRetry(text, retries) {
               for (let i = 0; i < retries; i++) {
                 const res = await fetch(
-                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}`,
+                  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + process.env.GEMINI_API_KEY,
                   {
                     method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                      contents: [{ parts: [{ text }] }]
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text }] }] })
                   }
                 );
                 if (res.status === 429) {
-                  const wait = (backoffSec[i] || 60) * 1000;
-                  console.log(`Rate limited. Retrying in ${backoffSec[i]}s...`);
-                  await new Promise(r => setTimeout(r, wait));
+                  await new Promise(r => setTimeout(r, (i + 1) * 10000));
                   continue;
                 }
                 const json = await res.json();
@@ -74,20 +48,8 @@ ${body}`;
               throw new Error('Translation failed after retries');
             }
 
-            let commentBody;
-            try {
-              const raw = await translateWithRetry(prompt);
-              const viMatch = raw.match(/## VI\s*([\s\S]*?)(?=## JA|$)/i);
-              const jaMatch = raw.match(/## JA\s*([\s\S]*?)(?=---|$)/i);
-              const translatedVi = (viMatch && viMatch[1].trim()) || raw;
-              const translatedJa = (jaMatch && jaMatch[1].trim()) || '(日本語訳の取得に失敗しました)';
-
-              commentBody = `🇻🇳 **Tiếng Việt**\n\n${translatedVi}\n\n---\n\n🇯🇵 **日本語**\n\n${translatedJa}`;
-            } catch (err) {
-              console.error('Translation error:', err.message);
-              commentBody = `⚠️ 翻訳エラー: ${err.message}\n\n(GEMINI_API_KEY の確認や Actions のログを確認してください)`;
-            }
-
+            const translated = await translateWithRetry(prompt, 3);
+            const commentBody = '<details>\n<summary>🇯🇵 日本語訳</summary>\n\n' + translated + '\n\n</details>';
             const commentId = context.payload.comment.id;
 
             if (context.eventName === 'pull_request_review_comment') {
@@ -106,4 +68,3 @@ ${body}`;
                 body: commentBody
               });
             }
-            console.log('Reply posted successfully.');
