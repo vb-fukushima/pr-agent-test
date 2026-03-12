@@ -20,13 +20,26 @@ jobs:
           script: |
             const body = context.payload.comment.body;
 
-            const RULES = `ルール：
-            - コードブロック（\`\`\`で囲まれた部分）は翻訳せずそのままコピー
-            - インラインコード（\`で囲まれた部分）は翻訳しない
-            - マークダウンの構造・記号はそのまま保持
-            - 自然言語の文章部分のみ翻訳`;
+            const RULES = `ルール：コードブロック(\`\`\`)・インラインコード(\`)は翻訳しない。マークダウンは保持。自然言語のみ翻訳。`;
 
-            async function translateWithRetry(text, retries = 3) {
+            // 1回のAPI呼び出しでベトナム語＋日本語を取得（RPM削減）
+            const prompt = `以下のPRレビューコメントを、指定フォーマットで2つ翻訳してください。
+
+${RULES}
+
+出力は必ず次の2ブロックだけにしてください（見出しも含めてそのまま）：
+---
+## VI
+（ここにベトナム語訳を1つで出力）
+## JA
+（ここに日本語訳を1つで出力）
+---
+
+対象テキスト：
+${body}`;
+
+            async function translateWithRetry(text, retries = 6) {
+              const backoffSec = [15, 30, 45, 60, 75, 90];
               for (let i = 0; i < retries; i++) {
                 const res = await fetch(
                   `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}`,
@@ -39,26 +52,24 @@ jobs:
                   }
                 );
                 if (res.status === 429) {
-                  console.log(`Rate limited. Retrying in ${(i + 1) * 10}s...`);
-                  await new Promise(r => setTimeout(r, (i + 1) * 10000));
+                  const wait = (backoffSec[i] || 60) * 1000;
+                  console.log(`Rate limited. Retrying in ${backoffSec[i]}s...`);
+                  await new Promise(r => setTimeout(r, wait));
                   continue;
                 }
                 const json = await res.json();
+                if (!res.ok) throw new Error(json.error?.message || res.statusText);
                 return json.candidates[0].content.parts[0].text;
               }
               throw new Error('Translation failed after retries');
             }
 
-            // 英語 → ベトナム語
-            const promptVi = `以下のPRレビューコメントをベトナム語（Tiếng Việt）に翻訳してください。\n${RULES}\n\n${body}`;
-            const translatedVi = await translateWithRetry(promptVi);
+            const raw = await translateWithRetry(prompt);
+            const viMatch = raw.match(/## VI\s*([\s\S]*?)(?=## JA|$)/i);
+            const jaMatch = raw.match(/## JA\s*([\s\S]*?)(?=---|$)/i);
+            const translatedVi = (viMatch && viMatch[1].trim()) || raw;
+            const translatedJa = (jaMatch && jaMatch[1].trim()) || '(日本語訳の取得に失敗しました)';
 
-            // 英語 → 日本語（連続呼び出しでRPM対策のため少し待機）
-            await new Promise(r => setTimeout(r, 1500));
-            const promptJa = `以下のPRレビューコメントを日本語に翻訳してください。\n${RULES}\n\n${body}`;
-            const translatedJa = await translateWithRetry(promptJa);
-
-            // 1つの返信：上にベトナム語、区切り、下に日本語
             const commentBody = `🇻🇳 **Tiếng Việt**\n\n${translatedVi}\n\n---\n\n🇯🇵 **日本語**\n\n${translatedJa}`;
             const commentId = context.payload.comment.id;
 
