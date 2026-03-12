@@ -24,8 +24,22 @@ jobs:
             const body = context.payload.comment.body;
             if (!body || body.length < 2) return;
 
-            const prompt = `以下のPRレビューコメントを日本語に翻訳してください。
-            ルール：コードブロック（\`\`\`で囲んだ部分）とインラインコード（\`で囲んだ部分）は翻訳せずそのまま。マークダウンは保持。自然な文章部分のみ日本語に。\n\n${body}`;
+            const RULES = 'ルール：コードブロック（```で囲んだ部分）とインラインコード（`で囲んだ部分）は翻訳せずそのまま。マークダウンは保持。自然な文章部分のみ翻訳。';
+            const commentId = context.payload.comment.id;
+            const isReviewComment = context.eventName === 'pull_request_review_comment';
+
+            // 1回のAPI呼び出しでベトナム語＋日本語の両方を取得（API制限対策）
+            const prompt = `以下のPRレビューコメントを、ベトナム語（Tiếng Việt）と日本語の2つに翻訳してください。
+${RULES}
+
+回答は必ず次の形式だけにしてください（他に説明は書かないでください）：
+---VI---
+（ここにベトナム語訳のみ）
+---JA---
+（ここに日本語訳のみ）
+
+翻訳対象：
+${body}`;
 
             async function translateWithRetry(text, retries) {
               for (let i = 0; i < retries; i++) {
@@ -48,23 +62,70 @@ jobs:
               throw new Error('Translation failed after retries');
             }
 
-            const translated = await translateWithRetry(prompt, 3);
-            const commentBody = '<details>\n<summary>🇯🇵 日本語訳</summary>\n\n' + translated + '\n\n</details>';
-            const commentId = context.payload.comment.id;
+            let raw;
+            try {
+              raw = await translateWithRetry(prompt, 3);
+            } catch (e) {
+              console.log('[translate] Gemini API error:', e.message);
+              throw e;
+            }
 
-            if (context.eventName === 'pull_request_review_comment') {
-              await github.rest.pulls.createReplyForReviewComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.payload.pull_request.number,
-                comment_id: commentId,
-                body: commentBody
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: commentBody
-              });
+            // Debug: Gemini の生レスポンス（先頭のみ）をログに出して原因を追いやすくする
+            console.log('[translate] raw length:', raw.length);
+            console.log('[translate] raw preview:', raw.substring(0, 500).replace(/\n/g, '\\n'));
+
+            let vi = '';
+            let ja = '';
+            const viMatch = raw.match(/---VI---\s*([\s\S]*?)\s*---JA---/);
+            const jaMatch = raw.match(/---JA---\s*([\s\S]*?)$/);
+            if (viMatch && viMatch[1]) vi = viMatch[1].trim();
+            if (jaMatch && jaMatch[1]) ja = jaMatch[1].trim();
+
+            // 区切りが違う場合のフォールバック（例: 改行やマークダウンで --- が変わっている）
+            if (!vi || !ja) {
+              const parts = raw.split(/---JA---/);
+              if (parts.length >= 2) {
+                const viPart = parts[0].replace(/---VI---/, '').trim();
+                const jaPart = parts[1].trim();
+                if (!vi && viPart.length > 10) vi = viPart;
+                if (!ja && jaPart.length > 10) ja = jaPart;
+              }
+            }
+
+            console.log('[translate] parsed vi length:', vi.length, 'ja length:', ja.length);
+
+            async function postReply(content) {
+              if (isReviewComment) {
+                await github.rest.pulls.createReplyForReviewComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.payload.pull_request.number,
+                  comment_id: commentId,
+                  body: content
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: content
+                });
+              }
+            }
+
+            if (vi) {
+              console.log('[translate] posting Vietnamese reply');
+              await postReply('<details>\n<summary>🇻🇳 Tiếng Việt</summary>\n\n' + vi + '\n\n</details>');
+            }
+            if (ja) {
+              console.log('[translate] posting Japanese reply');
+              await postReply('<details>\n<summary>🇯🇵 日本語訳</summary>\n\n' + ja + '\n\n</details>');
+            }
+
+            // 両方パースできなかった → 日本語だけ再取得して投稿（フォールバック）
+            if (!vi && !ja) {
+              console.log('[translate] fallback: VI+JA parse failed, requesting Japanese-only');
+              const promptJa = `以下のPRレビューコメントを日本語に翻訳してください。\n${RULES}\n\n${body}`;
+              const jaOnly = await translateWithRetry(promptJa, 3);
+              await postReply('<details>\n<summary>🇯🇵 日本語訳</summary>\n\n' + jaOnly + '\n\n</details>');
             }
