@@ -29,18 +29,20 @@ jobs:
             const isReviewComment = context.eventName === 'pull_request_review_comment';
 
             // 1回のAPI呼び出しでベトナム語＋日本語の両方を取得（API制限対策）
-            // 区切りは ===VI=== / ===JA=== にしている（YAMLで --- が文書区切りになるため）
-            const prompt = `以下のPRレビューコメントを、ベトナム語（Tiếng Việt）と日本語の2つに翻訳してください。
-${RULES}
-
-回答は必ず次の形式だけにしてください（他に説明は書かないでください）：
-===VI===
-（ここにベトナム語訳のみ）
-===JA===
-（ここに日本語訳のみ）
-
-翻訳対象：
-${body}`;
+            // プロンプトは連結で組み立て（YAMLが行頭の ${ を解釈しないようにする）
+            const prompt = [
+              '以下のPRレビューコメントを、ベトナム語（Tiếng Việt）と日本語の2つに翻訳してください。',
+              RULES,
+              '',
+              '回答は必ず次の形式だけにしてください（他に説明は書かないでください）：',
+              '===VI===',
+              '（ここにベトナム語訳のみ）',
+              '===JA===',
+              '（ここに日本語訳のみ）',
+              '',
+              '翻訳対象：',
+              body
+            ].join('\n');
 
             async function translateWithRetry(text, retries) {
               for (let i = 0; i < retries; i++) {
@@ -126,7 +128,7 @@ ${body}`;
             // 両方パースできなかった → 日本語だけ再取得して投稿（フォールバック）
             if (!vi && !ja) {
               console.log('[translate] fallback: VI+JA parse failed, requesting Japanese-only');
-              const promptJa = `以下のPRレビューコメントを日本語に翻訳してください。\n${RULES}\n\n${body}`;
+              const promptJa = '以下のPRレビューコメントを日本語に翻訳してください。\n' + RULES + '\n\n' + body;
               const jaOnly = await translateWithRetry(promptJa, 3);
               await postReply('<details>\n<summary>🇯🇵 日本語訳</summary>\n\n' + jaOnly + '\n\n</details>');
             }
