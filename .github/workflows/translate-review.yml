@@ -24,6 +24,12 @@ jobs:
             const body = context.payload.comment.body;
             if (!body || body.length < 2) return;
 
+            // PR-Agent の「解析中」コメントは翻訳しない（解析終了で消えるが翻訳だけ残るのを防ぐ）
+            if (body.includes('Looking for bugs?')) {
+              console.log('[translate] Skipping: analyzing/placeholder comment (Looking for bugs?)');
+              return;
+            }
+
             const RULES = 'ルール：コードブロック（```で囲んだ部分）とインラインコード（`で囲んだ部分）は翻訳せずそのまま。マークダウンは保持。自然な文章部分のみ翻訳。';
             const commentId = context.payload.comment.id;
             const isReviewComment = context.eventName === 'pull_request_review_comment';
