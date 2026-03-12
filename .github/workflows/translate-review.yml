@@ -8,31 +8,19 @@ on:
 
 jobs:
   translate:
-    # フォークPRだと GITHUB_TOKEN が制限され action ダウンロードで 401 になることがあるため、同一リポジトリのPRのみ実行
-    if: github.event.comment.user.login == 'qodo-code-review[bot]' && (github.event_name == 'issue_comment' || github.event.pull_request.head.repo.full_name == github.repository)
+    # PR Agentのコメントのみ対象
+    if: github.event.comment.user.login == 'qodo-code-review[bot]'
+        || contains(github.event.comment.body, '<!-- pr-agent')
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
-      contents: read
     steps:
       - name: Translate and comment
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const body = context.payload.comment.body;
 
-            // Qodoの暫定コメント（レビュー分析中メッセージ）はスキップ
-            if (
-              body.includes('AI review agent is analyzing') ||
-              body.includes('AIレビューエージェントがこのプルリクエストを分析しています')
-            ) {
-              console.log('Skipping interim Qodo comment.');
-              return;
-            }
-
-            // ベトナム語コメントを日本語に翻訳（RPM制限対策のリトライ付き）
+            // Gemini API で翻訳（RPM制限対策のリトライ付き）
             const prompt = `以下のPRレビューコメントを日本語に翻訳してください。\nルール：\n- コードブロック（\`\`\`で囲まれた部分）は翻訳せず、そのままコピーしてください\n- インラインコード（\`で囲まれた部分）も翻訳しないでください\n- マークダウンの構造・記号はそのまま保持してください\n- 自然言語の文章部分のみ日本語に翻訳してください\n\n${body}`;
 
             async function translateWithRetry(text, retries = 3) {
@@ -48,6 +36,7 @@ jobs:
                   }
                 );
                 if (res.status === 429) {
+                  // RPM制限に引っかかったら待機してリトライ
                   console.log(`Rate limited. Retrying in ${(i + 1) * 10}s...`);
                   await new Promise(r => setTimeout(r, (i + 1) * 10000));
                   continue;
@@ -60,12 +49,12 @@ jobs:
 
             const translated = await translateWithRetry(prompt);
 
-            // 日本語訳を返信として組み立て（折りたたみ形式）
+            // 元コメントへの返信として翻訳を追加（折りたたみ形式）
             const commentBody = `<details>\n<summary>🇯🇵 日本語訳</summary>\n\n${translated}\n\n</details>`;
             const commentId = context.payload.comment.id;
 
             if (context.eventName === 'pull_request_review_comment') {
-              // インラインコメントへの返信
+              // レビューコメントへの返信（in_reply_to で紐付け）
               await github.rest.pulls.createReplyForReviewComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -74,12 +63,12 @@ jobs:
                 body: commentBody
               });
             } else {
-              // 通常コメント（in_reply_to はAPI非対応のため、引用付きで投稿）
-              const quoteHeader = `> 🤖 qodo-code-review[bot] のコメントの日本語訳\n\n`;
+              // issueコメントへの返信（in_reply_to パラメータで紐付け）
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: quoteHeader + commentBody
+                body: commentBody,
+                in_reply_to: commentId
               });
             }
