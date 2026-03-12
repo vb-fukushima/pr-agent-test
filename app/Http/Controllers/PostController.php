@@ -35,7 +35,7 @@ class PostController extends Controller
         // If tag creation fails, the post remains.
         $post = Post::create([
             'title' => $request->input('title'),
-            'body' => $request->input('body'),
+            'body' => $request->input('bodyt'),
             'user_id' => auth()->id(),
         ]);
 

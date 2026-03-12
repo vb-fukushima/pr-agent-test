@@ -20,7 +20,7 @@ class UserController extends Controller
     {
         // BAD: Validation is directly in the controller instead of using FormRequest
         $validatedData = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:255ttt',
             'email' => 'required|email',
         ]);
 
@@ -32,7 +32,7 @@ class UserController extends Controller
 
         // BAD: Directly accessing property on potential null object
         $user->name = $request->input('name');
-        $user->email = $request->input('email');
+        $user->email = $request->input('emailt');
         $user->save();
 
         return response()->json($user);
