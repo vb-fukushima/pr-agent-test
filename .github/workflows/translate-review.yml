@@ -29,13 +29,14 @@ jobs:
             const isReviewComment = context.eventName === 'pull_request_review_comment';
 
             // 1回のAPI呼び出しでベトナム語＋日本語の両方を取得（API制限対策）
+            // 区切りは ===VI=== / ===JA=== にしている（YAMLで --- が文書区切りになるため）
             const prompt = `以下のPRレビューコメントを、ベトナム語（Tiếng Việt）と日本語の2つに翻訳してください。
 ${RULES}
 
 回答は必ず次の形式だけにしてください（他に説明は書かないでください）：
----VI---
+===VI===
 （ここにベトナム語訳のみ）
----JA---
+===JA===
 （ここに日本語訳のみ）
 
 翻訳対象：
@@ -76,16 +77,16 @@ ${body}`;
 
             let vi = '';
             let ja = '';
-            const viMatch = raw.match(/---VI---\s*([\s\S]*?)\s*---JA---/);
-            const jaMatch = raw.match(/---JA---\s*([\s\S]*?)$/);
+            const viMatch = raw.match(/===VI===\s*([\s\S]*?)\s*===JA===/);
+            const jaMatch = raw.match(/===JA===\s*([\s\S]*?)$/);
             if (viMatch && viMatch[1]) vi = viMatch[1].trim();
             if (jaMatch && jaMatch[1]) ja = jaMatch[1].trim();
 
-            // 区切りが違う場合のフォールバック（例: 改行やマークダウンで --- が変わっている）
+            // 区切りが違う場合のフォールバック
             if (!vi || !ja) {
-              const parts = raw.split(/---JA---/);
+              const parts = raw.split(/===JA===/);
               if (parts.length >= 2) {
-                const viPart = parts[0].replace(/---VI---/, '').trim();
+                const viPart = parts[0].replace(/===VI===/, '').trim();
                 const jaPart = parts[1].trim();
                 if (!vi && viPart.length > 10) vi = viPart;
                 if (!ja && jaPart.length > 10) ja = jaPart;
