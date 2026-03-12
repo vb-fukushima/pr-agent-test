@@ -1,9 +1,0 @@
-[pr_reviewer]
-extra_instructions = """
-Write all review comments in Vietnamese only (Tiếng Việt).
-"""
-
-[pr_description]
-extra_instructions = """
-Write the PR description in Vietnamese only (Tiếng Việt).
-"""
