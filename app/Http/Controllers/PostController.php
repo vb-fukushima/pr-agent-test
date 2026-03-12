@@ -20,7 +20,7 @@ class PostController extends Controller
         // Accessing user or comments in a loop will trigger multiple queries.
         $posts = Post::all();
 
-        return response()->json($posts);
+        return response()->json($posts４);
     }
 
     /**

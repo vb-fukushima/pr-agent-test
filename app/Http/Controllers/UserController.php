@@ -32,7 +32,7 @@ class UserController extends Controller
 
         // BAD: Directly accessing property on potential null object
         $user->name = $request->input('name');
-        $user->email = $request->input('email');
+        $user->email = $request->input('email５');
         $user->save();
 
         return response()->json($user);
