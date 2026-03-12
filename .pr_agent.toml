@@ -1,3 +1,5 @@
+[config] response_language = "vi-VN"
+
 [pr_reviewer]
 extra_instructions = """
 Write all review comments in Vietnamese only (Tiếng Việt).

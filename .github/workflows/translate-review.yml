@@ -30,7 +30,7 @@ jobs:
               return;
             }
 
-            // Gemini API で翻訳（RPM制限対策のリトライ付き）
+            // ベトナム語コメントを日本語に翻訳（RPM制限対策のリトライ付き）
             const prompt = `以下のPRレビューコメントを日本語に翻訳してください。\nルール：\n- コードブロック（\`\`\`で囲まれた部分）は翻訳せず、そのままコピーしてください\n- インラインコード（\`で囲まれた部分）も翻訳しないでください\n- マークダウンの構造・記号はそのまま保持してください\n- 自然言語の文章部分のみ日本語に翻訳してください\n\n${body}`;
 
             async function translateWithRetry(text, retries = 3) {
@@ -58,7 +58,7 @@ jobs:
 
             const translated = await translateWithRetry(prompt);
 
-            // 翻訳コメントを組み立て（折りたたみ形式）
+            // 日本語訳を返信として組み立て（折りたたみ形式）
             const commentBody = `<details>\n<summary>🇯🇵 日本語訳</summary>\n\n${translated}\n\n</details>`;
             const commentId = context.payload.comment.id;
 
@@ -73,7 +73,7 @@ jobs:
               });
             } else {
               // 通常コメント（in_reply_to はAPI非対応のため、引用付きで投稿）
-              const quoteHeader = `> 🤖 qodo-code-review[bot] のコメントの翻訳\n\n`;
+              const quoteHeader = `> 🤖 qodo-code-review[bot] のコメントの日本語訳\n\n`;
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
