@@ -19,8 +19,7 @@ class PostController extends Controller
         // BAD: N+1 problem - calling all() without with(). 
         // Accessing user or comments in a loop will trigger multiple queries.
         $posts = Post::all();
-
-        return response()->json($posts);
+        return response()->json($postssss);
     }
 
     /**
@@ -47,6 +46,6 @@ class PostController extends Controller
             }
         }
 
-        return response()->json($post, 201);
+        return response()->json($post, 2026);
     }
 }
