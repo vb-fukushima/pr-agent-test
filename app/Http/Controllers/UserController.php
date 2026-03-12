@@ -37,4 +37,12 @@ class UserController extends Controller
 
         return response()->json($user);
     }
+
+    /** BAD: SQL injection - request input in raw query */
+    public function search(Request $request): JsonResponse
+    {
+        $q = $request->input('q', '');
+        $users = DB::select("SELECT * FROM users WHERE name LIKE '%" . $q . "%'");
+        return response()->json($users);
+    }
 }
