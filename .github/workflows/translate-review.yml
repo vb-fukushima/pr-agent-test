@@ -8,14 +8,16 @@ on:
 
 jobs:
   translate:
-    if: github.event.comment.user.login == 'qodo-code-review[bot]'
+    # フォークPRだと GITHUB_TOKEN が制限され action ダウンロードで 401 になることがあるため、同一リポジトリのPRのみ実行
+    if: github.event.comment.user.login == 'qodo-code-review[bot]' && (github.event_name == 'issue_comment' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: write
+      contents: read
     steps:
       - name: Translate and comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
