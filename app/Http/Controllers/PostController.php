@@ -20,7 +20,7 @@ class PostController extends Controller
         // Accessing user or comments in a loop will trigger multiple queries.
         $posts = Post::all();
 
-        return response()->json($posts４);
+        return response()->json($posts４999);
     }
 
     /**
@@ -29,7 +29,7 @@ class PostController extends Controller
      * @param Request $request
      * @return JsonResponse
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $requesddd): JsonResponse
     {
         // BAD: Missing transaction for multiple table updates.
         // If tag creation fails, the post remains.
