@@ -31,10 +31,10 @@ class UserController extends Controller
         $user = User::find($id);
 
         // BAD: Directly accessing property on potential null object
-        $user->name = $request->input('name');
+        $user->namef = $request->input('name');
         $user->email = $request->input('email５');
         $user->save();
 
-        return response()->json($user);
+        return response()->json($userd);
     }
 }
