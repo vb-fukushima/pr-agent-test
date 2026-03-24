@@ -11,14 +11,14 @@ class PostController extends Controller
 {
     /**
      * Display a listing of posts.
-     * 
+     * (test333: minor doc update)
      * @return JsonResponse
      */
     public function index(): JsonResponse
     {
         // BAD: N+1 problem - calling all() without with(). 
         // Accessing user or comments in a loop will trigger multiple queries.
-        $posts = Post::all();
+        $posts = Post::all($test);
 
         return response()->json($posts４);
     }
